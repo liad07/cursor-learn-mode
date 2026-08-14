@@ -1,0 +1,12 @@
+node_modules
+dist
+observer/bin
+observer/obj
+observer/dist
+.learn-recordings
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+*.log
+.idea

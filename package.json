@@ -1,0 +1,25 @@
+{
+  "name": "cursor-learn-mode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cursor Learn Mode: record a desktop demonstration, generate a reusable Skill. Replay uses existing Cursor tools.",
+  "scripts": {
+    "mcp": "tsx src/mcp/server.ts",
+    "build-observer": "dotnet publish observer/LearnObserver.csproj -c Release -o observer/dist /nologo",
+    "test": "tsx src/__tests__/run-all.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Learn Workflow</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #16161a;
+      color: #f4f4f5;
+      padding: 16px;
+    }
+    .card {
+      border: 1px solid #3f3f46;
+      border-radius: 12px;
+      padding: 16px;
+      background: #1c1c22;
+    }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    p { margin: 0 0 12px; color: #d4d4d8; font-size: 13px; line-height: 1.45; }
+    .meta { color: #a1a1aa; font-size: 13px; margin-bottom: 8px; }
+    pre {
+      white-space: pre-wrap;
+      background: #111114;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    button {
+      flex: 1;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .start { background: #dc2626; color: white; }
+    .pause { background: #3f3f46; color: white; }
+    .stop { background: #7f1d1d; color: white; }
+    .save { background: #2563eb; color: white; }
+    .ghost { background: transparent; color: #a1a1aa; border: 1px solid #3f3f46; }
+    button:disabled { opacity: .45; cursor: default; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">🧠 Learn Workflow</h1>
+    <p id="subtitle">Teach Cursor a new process</p>
+    <div class="meta" id="meta"></div>
+    <pre id="preview" hidden></pre>
+    <div class="row" id="actions">
+      <button class="start" id="start">🔴 Start Learning</button>
+    </div>
+  </div>
+  <script>
+    let rpcId = 1;
+    const pending = new Map();
+    let state = "idle";
+    let view = "";
+    let busy = false;
+    let queued = null;
+
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (!msg || msg.jsonrpc !== "2.0") return;
+      if (msg.id != null && pending.has(msg.id)) {
+        pending.get(msg.id)(msg);
+        pending.delete(msg.id);
+      }
+      if (msg.method && String(msg.method).includes("tool")) {
+        const result = msg.params?.result || msg.params?.structuredContent || msg.params;
+        if (result) applyResult(result);
+      }
+    });
+
+    function rpc(method, params) {
+      const id = rpcId++;
+      return new Promise((resolve) => {
+        pending.set(id, resolve);
+        window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+      });
+    }
+
+    async function callTool(name, args) {
+      if (busy) {
+        if (name === "learn_stop" || name === "learn_discard") queued = { name: name, args: args };
+        return;
+      }
+      busy = true;
+      markBusy(name);
+      try {
+        const msg = await rpc("tools/call", { name, arguments: args || {} });
+        const result = msg.result || msg.error || msg;
+        applyResult(result.structuredContent || result);
+        return result;
+      } finally {
+        busy = false;
+        render();
+        const next = queued;
+        queued = null;
+        if (next) callTool(next.name, next.args);
+      }
+    }
+
+    function markBusy(name) {
+      const ids = {
+        learn_start: "start",
+        learn_stop: "stop",
+        learn_pause: "pause",
+        learn_save: "save",
+        learn_discard: "discard",
+      };
+      const el = document.getElementById(ids[name] || "");
+      if (!el) return;
+      el.disabled = true;
+      if (name === "learn_start") el.textContent = "Starting…";
+      if (name === "learn_stop") el.textContent = "Stopping…";
+      if (name === "learn_save") el.textContent = "Saving…";
+    }
+
+    function applyResult(result) {
+      if (!result) return;
+      const sc = result.structuredContent || result;
+      if (sc.state) state = sc.state;
+      if (sc.preview) {
+        document.getElementById("preview").hidden = false;
+        document.getElementById("preview").textContent = sc.preview;
+      }
+      render();
+      if (typeof sc.eventCount === "number" || sc.elapsedMs) {
+        const elapsed = Math.floor((sc.elapsedMs || 0) / 1000);
+        const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+        const ss = String(elapsed % 60).padStart(2, "0");
+        document.getElementById("meta").textContent =
+          "Time: " + mm + ":" + ss + "    Events: " + (sc.eventCount || 0);
+      }
+      if (sc.message && state === "idle") {
+        document.getElementById("subtitle").textContent = sc.message;
+      }
+    }
+
+    function viewFor(s) {
+      if (s === "recording" || s === "paused") return "live";
+      if (s === "stopped") return "stopped";
+      return "idle";
+    }
+
+    function bindLive() {
+      document.getElementById("pause").onclick = () => callTool("learn_pause");
+      document.getElementById("stop").onclick = () => callTool("learn_stop");
+    }
+
+    function render() {
+      const actions = document.getElementById("actions");
+      const title = document.getElementById("title");
+      const subtitle = document.getElementById("subtitle");
+      const next = viewFor(state);
+      if (next === view) {
+        if (!busy) {
+          ["start", "pause", "stop", "save", "discard"].forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.disabled = false;
+            if (id === "start") el.textContent = "🔴 Start Learning";
+            if (id === "stop") el.textContent = "■ Stop";
+            if (id === "save") el.textContent = "Save Skill";
+          });
+        }
+        if (next === "live") {
+          title.textContent = state === "paused" ? "⏸ Learning paused" : "🔴 Learning";
+          const pause = document.getElementById("pause");
+          if (pause && !busy) pause.textContent = state === "paused" ? "Resume" : "Pause";
+        }
+        return;
+      }
+      view = next;
+      if (next === "live") {
+        title.textContent = state === "paused" ? "⏸ Learning paused" : "🔴 Learning";
+        subtitle.textContent = "Demonstrate the process on your desktop.";
+        actions.innerHTML =
+          '<button class="pause" id="pause">' + (state === "paused" ? "Resume" : "Pause") + "</button>" +
+          '<button class="stop" id="stop">■ Stop</button>';
+        bindLive();
+        return;
+      }
+      if (next === "stopped") {
+        title.textContent = "🧠 Workflow Learned";
+        subtitle.textContent = "Review the steps, then save a Cursor Skill.";
+        actions.innerHTML =
+          '<button class="ghost" id="discard">Discard</button>' +
+          '<button class="save" id="save">Save Skill</button>';
+        document.getElementById("discard").onclick = () => callTool("learn_discard");
+        document.getElementById("save").onclick = () => callTool("learn_save");
+        return;
+      }
+      title.textContent = "🧠 Learn Workflow";
+      subtitle.textContent = "Teach Cursor a new process";
+      actions.innerHTML = '<button class="start" id="start">🔴 Start Learning</button>';
+      document.getElementById("start").onclick = () => callTool("learn_start");
+    }
+
+    async function boot() {
+      try {
+        await rpc("ui/initialize", {
+          appCapabilities: { tools: {}, availableDisplayModes: ["inline"] },
+        });
+        window.parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized" }, "*");
+      } catch (_) {}
+      render();
+    }
+    boot();
+  </script>
+</body>
+</html>
