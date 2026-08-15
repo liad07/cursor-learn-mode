@@ -1,7 +1,14 @@
 # Cursor Learn Mode
 
+<p align="center">
+  <img src="docs/demo/learn-mode.gif" alt="Cursor Learn Mode: /learn → record a Notepad packing list → Save Skill → replay with new inputs" width="960" />
+</p>
+<p align="center">
+  <em>Teach it once. Replay the intent — not a mouse-coordinate macro.</em>
+</p>
+
 **Teach Cursor any Windows desktop or browser workflow by demonstrating it once.**  
-The next time you ask, the agent replays the *intent* — not a brittle mouse-coordinate macro — using [Playwright MCP](https://github.com/microsoft/playwright-mcp) for the web and **Windows Computer MCP** for native apps.
+The next time you ask, the agent replays the *intent* using [Playwright MCP](https://github.com/microsoft/playwright-mcp) for the web and **Windows Computer MCP** for native apps.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-0b6.svg)](LICENSE)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -23,6 +30,37 @@ Most “record and replay” tools save clicks as `(x, y)` and break the moment 
    - **Terminal** — CLI steps from the demonstration.
 
 Passwords, tokens, cookies, and `Authorization` headers are stripped. They never land in the Skill or in git.
+
+---
+
+## Demo: weekend packing list
+
+A random real process we recorded while building this: **open Notepad → type a packing list → Save As**.
+
+| You do | Learn Mode sees |
+|--------|-----------------|
+| `/learn` or *תלמד מה שאני עושה עכשיו* | MCP App card in Cursor chat |
+| Click **Start Learning** | On-screen HUD: time, event count, Pause / Stop |
+| Type the list in Notepad | Semantic step: *Type the document content* (`content` input) |
+| **Save As** `packing-list.txt` | *Enter the destination file name* (`filename` input) |
+| Overlay **Stop** or `Ctrl+Shift+L` | Preview → **Save Skill** |
+
+Next chat, different inputs:
+
+> תיצור ככה קובץ בשם `beach-kit.txt` עם רשימת ציוד לים
+
+Cursor reads the Skill and drives **Windows Computer MCP**. Same workflow, new file.
+
+<p align="center">
+  <img src="docs/demo/live-notepad.png" alt="Notepad packing-list.txt from the live demonstration" width="420" />
+  &nbsp;
+  <img src="docs/demo/live-hud.png" alt="Live Learn Mode HUD: recording time and event count" width="280" />
+</p>
+<p align="center">
+  <sub>Left: the file from the live demo. Right: the real HUD captured during a Learn session (Pause / Stop / Ctrl+Shift+L).</sub>
+</p>
+
+The GIF at the top walks the full loop: trigger → overlay → type → Save As → semantic preview → replay in a new chat.
 
 ---
 

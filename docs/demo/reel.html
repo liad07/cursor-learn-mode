@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Learn Mode demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 1280px; height: 720px; overflow: hidden; background: #0b0d12; font-family: "Segoe UI", system-ui, sans-serif; color: #f4f4f5; }
+    .scene { display: none; width: 1280px; height: 720px; position: relative; }
+    .scene.on { display: block; }
+    .bg {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(900px 500px at 15% 0%, #3f1d24 0%, transparent 55%),
+        radial-gradient(700px 420px at 90% 80%, #1e293b 0%, transparent 50%),
+        #0b0d12;
+    }
+    .topbar {
+      position: absolute; top: 0; left: 0; right: 0; height: 44px;
+      display: flex; align-items: center; gap: 10px; padding: 0 18px;
+      background: rgba(12,14,20,.72); border-bottom: 1px solid #27272f; z-index: 5;
+      font-size: 13px; color: #a1a1aa;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .chat {
+      position: absolute; left: 48px; top: 78px; width: 520px;
+      background: #14151c; border: 1px solid #2a2b36; border-radius: 18px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.45); padding: 22px; z-index: 2;
+    }
+    .who { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #71717a; margin-bottom: 8px; }
+    .bubble {
+      background: #1c1d27; border: 1px solid #2f3040; border-radius: 14px;
+      padding: 14px 16px; font-size: 18px; line-height: 1.45;
+    }
+    .card {
+      background: #16161c; border: 1px solid #3f3f46; border-radius: 16px;
+      padding: 22px; margin-top: 14px;
+    }
+    .card h2 { font-size: 22px; margin-bottom: 6px; }
+    .muted { color: #a1a1aa; font-size: 14px; }
+    .row { display: flex; gap: 10px; margin-top: 16px; }
+    .btn { flex: 1; border: 0; border-radius: 10px; padding: 12px; font-weight: 700; font-size: 15px; color: #fff; }
+    .start { background: #dc2626; }
+    .stop { background: #7f1d1d; }
+    .save { background: #2563eb; }
+    .ghost { background: #2a2b36; }
+    .hud {
+      position: absolute; right: 36px; bottom: 36px; width: 340px; height: 196px;
+      background: #16161a; border: 1px solid #50505a; border-radius: 4px; z-index: 6;
+      padding: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.5);
+    }
+    .hud h3 { font-size: 18px; margin-bottom: 10px; }
+    .hud p { color: #c8c8d0; font-size: 14px; margin: 4px 0; }
+    .hint { color: #8b8b96; font-size: 12px; margin-top: 8px; }
+    .notepad {
+      position: absolute; left: 430px; top: 70px; width: 780px; height: 560px;
+      background: #f3f3f3; border-radius: 10px; overflow: hidden; color: #111;
+      box-shadow: 0 40px 90px rgba(0,0,0,.5); z-index: 3;
+    }
+    .ntitle { height: 38px; background: #fff; border-bottom: 1px solid #d4d4d4; display: flex; align-items: center; padding: 0 14px; font-size: 13px; }
+    .nmenu { height: 28px; background: #f8f8f8; font-size: 12px; color: #333; display: flex; gap: 16px; align-items: center; padding: 0 14px; }
+    .nbody { padding: 16px 18px; font-family: Consolas, "Cascadia Mono", monospace; font-size: 18px; line-height: 1.55; white-space: pre-wrap; height: 494px; background: #fff; }
+    .caret { display: inline-block; width: 8px; height: 18px; background: #111; vertical-align: text-bottom; }
+    .dialog {
+      position: absolute; left: 560px; top: 210px; width: 520px; background: #f0f0f0; color: #111;
+      border: 1px solid #7a7a7a; border-radius: 8px; z-index: 7; box-shadow: 0 24px 60px rgba(0,0,0,.4);
+    }
+    .dhead { background: #fff; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #ddd; }
+    .dbody { padding: 16px; font-size: 14px; }
+    .dbody input { width: 100%; padding: 8px; margin: 8px 0 16px; font-size: 14px; }
+    .drow { display: flex; justify-content: flex-end; gap: 8px; }
+    .drow button { padding: 6px 18px; }
+    .preview {
+      position: absolute; left: 70px; top: 90px; width: 620px;
+      background: #14151c; border: 1px solid #2a2b36; border-radius: 18px; padding: 24px; z-index: 4;
+    }
+    .preview h2 { margin-bottom: 8px; }
+    .pill { display: inline-block; background: #1f2937; border: 1px solid #334155; border-radius: 999px; padding: 4px 10px; font-size: 12px; margin: 4px 4px 0 0; }
+    .steps { margin: 14px 0; color: #d4d4d8; font-size: 15px; line-height: 1.7; }
+    .badge { position: absolute; left: 48px; bottom: 36px; background: #111827; border: 1px solid #ef4444; color: #fecaca; border-radius: 999px; padding: 8px 14px; font-size: 13px; z-index: 8; }
+    .hero { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2; text-align: center; }
+    .hero .kicker { color: #fca5a5; letter-spacing: .2em; text-transform: uppercase; font-size: 13px; margin-bottom: 16px; }
+    .hero h1 { font-size: 64px; letter-spacing: -.03em; }
+    .hero p { margin-top: 16px; font-size: 22px; color: #a1a1aa; max-width: 720px; }
+    .agent { position: absolute; right: 48px; top: 90px; width: 560px; background: #14151c; border: 1px solid #2a2b36; border-radius: 18px; padding: 20px; z-index: 4; }
+    .ok { color: #86efac; font-size: 14px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <section class="scene" data-s="1">
+    <div class="hero">
+      <div class="kicker">Cursor · Learn Mode</div>
+      <h1>Teach it once.</h1>
+      <p>Demonstrate a real Windows process. Cursor turns it into a Skill — then replays the intent with tools it already has.</p>
+    </div>
+  </section>
+
+  <section class="scene" data-s="2">
+    <div class="topbar"><span class="dot" style="background:#ef4444"></span><span class="dot" style="background:#eab308"></span><span class="dot" style="background:#22c55e"></span> Cursor Agent · new chat</div>
+    <div class="chat">
+      <div class="who">You</div>
+      <div class="bubble">תלמד מה שאני עושה עכשיו<br /><span class="muted" style="color:#a1a1aa;font-size:14px">/learn · teach Cursor this process</span></div>
+    </div>
+    <div class="badge">Trigger: Hebrew or /learn</div>
+  </section>
+
+  <section class="scene" data-s="3">
+    <div class="topbar"><span class="dot" style="background:#ef4444"></span><span class="dot" style="background:#eab308"></span><span class="dot" style="background:#22c55e"></span> Cursor Agent · Learn Mode</div>
+    <div class="chat">
+      <div class="who">Cursor</div>
+      <div class="card">
+        <h2>🧠 Learn Workflow</h2>
+        <p class="muted">Teach Cursor a new process</p>
+        <div class="row"><button class="btn start">🔴 Start Learning</button></div>
+      </div>
+    </div>
+    <div class="badge">MCP App UI inside chat</div>
+  </section>
+
+  <section class="scene" data-s="4">
+    <div class="topbar"><span class="dot" style="background:#ef4444"></span><span class="dot" style="background:#eab308"></span><span class="dot" style="background:#22c55e"></span> Desktop · recording</div>
+    <div class="notepad">
+      <div class="ntitle">Untitled - Notepad</div>
+      <div class="nmenu"><span>File</span><span>Edit</span><span>View</span></div>
+      <div class="nbody"><span class="caret"></span></div>
+    </div>
+    <div class="hud">
+      <h3>🔴  Learning</h3>
+      <p>Time: 00:04</p>
+      <p>Events: 6</p>
+      <p class="hint">Stop: overlay or Ctrl+Shift+L</p>
+      <div class="row" style="margin-top:18px">
+        <button class="btn ghost">Pause</button>
+        <button class="btn stop">■  Stop</button>
+      </div>
+    </div>
+    <div class="badge">Observer HUD — click-through except buttons</div>
+  </section>
+
+  <section class="scene" data-s="5">
+    <div class="topbar"><span class="dot" style="background:#ef4444"></span><span class="dot" style="background:#eab308"></span><span class="dot" style="background:#22c55e"></span> Demo · weekend packing list</div>
+    <div class="notepad">
+      <div class="ntitle">Untitled - Notepad</div>
+      <div class="nmenu"><span>File</span><span>Edit</span><span>View</span></div>
+      <div class="nbody">WEEKEND PACKING LIST
+- hiking boots
+- rain jacket
+- headlamp
+- trail snacks
+<span class="caret"></span></div>
+    </div>
+    <div class="hud">
+      <h3>🔴  Learning</h3>
+      <p>Time: 00:18</p>
+      <p>Events: 41</p>
+      <p class="hint">Stop: overlay or Ctrl+Shift+L</p>
+      <div class="row" style="margin-top:18px">
+        <button class="btn ghost">Pause</button>
+        <button class="btn stop">■  Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-s="6">
+    <div class="topbar"><span class="dot" style="background:#ef4444"></span><span class="dot" style="background:#eab308"></span><span class="dot" style="background:#22c55e"></span> Save As · filename is an input</div>
+    <div class="notepad">
+      <div class="ntitle">Untitled - Notepad</div>
+      <div class="nmenu"><span>File</span><span>Edit</span><span>View</span></div>
+      <div class="nbody">WEEKEND PACKING LIST
+- hiking boots
+- rain jacket
+- headlamp
+- trail snacks</div>
+    </div>
+    <div class="dialog">
+      <div class="dhead">Save As</div>
+      <div class="dbody">
+        File name:
+        <input value="packing-list.txt" />
+        <div class="drow"><button>Cancel</button><button style="background:#2563eb;color:#fff;border:0;border-radius:4px">Save</button></div>
+      </div>
+    </div>
+    <div class="hud">
+      <h3>🔴  Learning</h3>
+      <p>Time: 00:26</p>
+      <p>Events: 58</p>
+      <p class="hint">Stop: overlay or Ctrl+Shift+L</p>
+      <div class="row" style="margin-top:18px">
+        <button class="btn ghost">Pause</button>
+        <button class="btn stop">■  Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-s="7">
+    <div class="topbar"><span class="dot" style="background:#22c55e"></span> Analysis · semantic workflow, not coordinates</div>
+    <div class="preview">
+      <h2>🧠 Workflow Learned</h2>
+      <p class="muted" style="margin-bottom:12px">Name: Create Text File With Notepad</p>
+      <div><span class="pill">Notepad</span></div>
+      <p class="muted" style="margin-top:12px">Inputs</p>
+      <div><span class="pill">content</span><span class="pill">filename</span></div>
+      <div class="steps">
+        1. Open Notepad<br />
+        2. Type the document content<br />
+        3. Open Save As<br />
+        4. Enter the destination file name<br />
+        5. Confirm Save
+      </div>
+      <div class="row">
+        <button class="btn ghost">Discard</button>
+        <button class="btn save">Save Skill</button>
+      </div>
+    </div>
+    <div class="badge">Saved to ~/.cursor/skills/create-text-file-with-notepad/</div>
+  </section>
+
+  <section class="scene" data-s="8">
+    <div class="topbar"><span class="dot" style="background:#22c55e"></span> New chat · replay with different inputs</div>
+    <div class="chat" style="width:560px">
+      <div class="who">You</div>
+      <div class="bubble">תיצור ככה קובץ בשם beach-kit.txt עם רשימת ציוד לים</div>
+      <div class="who" style="margin-top:16px">Cursor · using the Skill</div>
+      <div class="card">
+        <p class="muted">Reads SKILL.md → uses existing tools</p>
+        <div class="steps" style="margin-top:8px">
+          Windows Computer MCP → launch Notepad<br />
+          Type beach content → Save As beach-kit.txt
+        </div>
+        <p class="ok">✓ beach-kit.txt written · same process, new inputs</p>
+      </div>
+    </div>
+    <div class="notepad" style="left:auto;right:36px;top:88px;width:520px;height:480px">
+      <div class="ntitle">beach-kit.txt - Notepad</div>
+      <div class="nmenu"><span>File</span><span>Edit</span></div>
+      <div class="nbody" style="font-size:16px;height:414px">BEACH KIT
+- towel
+- sunscreen
+- water bottle
+- book
+</div>
+    </div>
+  </section>
+
+  <script>
+    const n = new URLSearchParams(location.search).get("scene") || "1";
+    document.querySelectorAll(".scene").forEach((el) => {
+      if (el.getAttribute("data-s") === n) el.classList.add("on");
+    });
+  </script>
+</body>
+</html>

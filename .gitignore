@@ -4,6 +4,7 @@ observer/bin
 observer/obj
 observer/dist
 .learn-recordings
+docs/demo/frames/*.png
 *.tsbuildinfo
 .DS_Store
 .env
