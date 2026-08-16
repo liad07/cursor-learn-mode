@@ -1,22 +1,11 @@
 {
   "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--extension"]
-    },
-    "windows-computer": {
-      "command": "C:\\Users\\<you>\\cursor-tools\\windows-computer-mcp\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "windows_computer_mcp"],
-      "env": {
-        "WINAPP_CLI_TELEMETRY_OPTOUT": "1"
-      }
-    },
     "learn-mode": {
       "command": "npx",
       "args": [
         "--yes",
         "tsx",
-        "C:\\Users\\<you>\\path\\to\\cursor-learn-mode\\src\\mcp\\server.ts"
+        "/ABSOLUTE/PATH/TO/cursor-learn-mode/src/mcp/server.ts"
       ]
     }
   }

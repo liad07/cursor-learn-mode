@@ -15,6 +15,9 @@ import {
   writeStopSignal,
 } from "../session/store.ts";
 import type { AnalysisPreview, LearnSession, Workflow } from "../types.ts";
+import { SKILLS_DIR } from "../paths.ts";
+import { readdir, readFile, stat } from "node:fs/promises";
+import path from "node:path";
 
 export type LearnState = "idle" | "recording" | "paused" | "stopped";
 
@@ -143,6 +146,34 @@ export class LearnController {
     this.session = undefined;
     this.preview = undefined;
     this.workflow = undefined;
+  }
+
+  async listSkills(): Promise<{ name: string; title?: string }[]> {
+    let names: string[] = [];
+    try {
+      names = await readdir(SKILLS_DIR);
+    } catch {
+      return [];
+    }
+    const out: { name: string; title?: string }[] = [];
+    for (const name of names) {
+      const skillFile = path.join(SKILLS_DIR, name, "SKILL.md");
+      try {
+        if (!(await stat(skillFile)).isFile()) continue;
+        const workflowFile = path.join(SKILLS_DIR, name, "workflow.json");
+        try {
+          if (!(await stat(workflowFile)).isFile()) continue;
+        } catch {
+          continue;
+        }
+        const raw = await readFile(skillFile, "utf8");
+        const title = raw.match(/^#\s+(.+)$/m)?.[1]?.trim();
+        out.push({ name, title });
+      } catch {
+        // skip folders that are not skills
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 }
 

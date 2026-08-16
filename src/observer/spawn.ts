@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LEARN_ROOT, OBSERVER_DIR, OBSERVER_EXE } from "../paths.ts";
+import { LEARN_ROOT, OBSERVER_DIR, OBSERVER_EXE, OBSERVER_MAC, OBSERVER_MAC_DIR } from "../paths.ts";
 import type { ObserverStatus } from "../types.ts";
 
 export type ObserverHandle = {
@@ -18,9 +18,44 @@ async function fileExists(file: string): Promise<boolean> {
   }
 }
 
+export function observerPlatform(): "win32" | "darwin" {
+  if (process.platform === "win32") return "win32";
+  if (process.platform === "darwin") return "darwin";
+  throw new Error(`Learn Mode recording is not supported on ${process.platform}. Use Windows or macOS.`);
+}
+
 export async function ensureObserverBuilt(): Promise<string> {
-  if (await fileExists(OBSERVER_EXE)) return OBSERVER_EXE;
-  const proc = spawn("dotnet", ["publish", "observer/LearnObserver.csproj", "-c", "Release", "-o", "observer/dist", "/nologo"], {
+  const platform = observerPlatform();
+  if (platform === "win32") {
+    if (await fileExists(OBSERVER_EXE)) return OBSERVER_EXE;
+    const code = await run("dotnet", ["publish", "observer/LearnObserver.csproj", "-c", "Release", "-o", "observer/dist", "/nologo"]);
+    if (code !== 0 || !(await fileExists(OBSERVER_EXE))) {
+      throw new Error("Failed to build the Windows Learn Observer.");
+    }
+    return OBSERVER_EXE;
+  }
+  if (await fileExists(OBSERVER_MAC)) return OBSERVER_MAC;
+  await fs.mkdir(path.join(OBSERVER_MAC_DIR, "dist"), { recursive: true });
+  const code = await run("swiftc", [
+    "-O",
+    "-o",
+    OBSERVER_MAC,
+    path.join(OBSERVER_MAC_DIR, "LearnObserver.swift"),
+    "-framework",
+    "AppKit",
+    "-framework",
+    "ApplicationServices",
+    "-framework",
+    "CoreGraphics",
+  ]);
+  if (code !== 0 || !(await fileExists(OBSERVER_MAC))) {
+    throw new Error("Failed to build the macOS Learn Observer. Install Xcode Command Line Tools and enable Accessibility for Cursor.");
+  }
+  return OBSERVER_MAC;
+}
+
+async function run(command: string, args: string[]): Promise<number> {
+  const proc = spawn(command, args, {
     cwd: LEARN_ROOT,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -31,25 +66,25 @@ export async function ensureObserverBuilt(): Promise<string> {
     proc.on("error", reject);
     proc.on("close", (value) => resolve(value ?? 1));
   });
-  if (code !== 0 || !(await fileExists(OBSERVER_EXE))) {
-    throw new Error(`Failed to build Learn Observer.\n${Buffer.concat(stderr).toString("utf8")}`);
+  if (code !== 0 && stderr.length) {
+    process.stderr.write(Buffer.concat(stderr));
   }
-  return OBSERVER_EXE;
+  return code;
 }
 
 export async function startObserver(sessionDir: string): Promise<ObserverHandle> {
   const exe = await ensureObserverBuilt();
   const child = spawn(exe, ["--session-dir", sessionDir], {
-    cwd: OBSERVER_DIR,
+    cwd: path.dirname(exe),
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
     detached: false,
   });
   child.stderr?.on("data", () => {
-    // observer diagnostics stay out of MCP stdio
+    // keep MCP stdio clean
   });
   try {
-    const ready = await waitForStatus(sessionDir, 8000);
+    const ready = await waitForStatus(sessionDir, 10000);
     if (!ready) {
       child.kill();
       throw new Error("Learn Observer did not start in time.");

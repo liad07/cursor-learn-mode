@@ -5,12 +5,20 @@ import type { AnalysisPreview, LearnEvent, LearnSession, Workflow } from "../typ
 function guessTitle(applications: string[], steps: AnalysisPreview["steps"]): { title: string; name: string; goal: string } {
   const apps = applications.map((a) => a.toLowerCase());
   const hasNotepad = apps.some((a) => a.includes("notepad"));
+  const hasTextEdit = apps.some((a) => a.includes("textedit"));
   const hasSave = steps.some((s) => s.kind === "save");
   if (hasNotepad && hasSave) {
     return {
       title: "Create Text File With Notepad",
       name: "create-text-file-with-notepad",
       goal: "Create a text file by opening Notepad, typing content, and saving it with Save As.",
+    };
+  }
+  if (hasTextEdit && hasSave) {
+    return {
+      title: "Create Text File With TextEdit",
+      name: "create-text-file-with-textedit",
+      goal: "Create a text file by opening TextEdit, typing content, and saving it.",
     };
   }
   const primary = applications[0] ?? "Desktop";
@@ -60,9 +68,9 @@ export function analyzeSession(session: LearnSession): AnalysisPreview {
 }
 
 function successFor(name: string, inputs: AnalysisPreview["inputs"]): string[] {
-  if (name === "create-text-file-with-notepad") {
+  if (name === "create-text-file-with-notepad" || name === "create-text-file-with-textedit") {
     return [
-      "Notepad Save As completed without an error dialog.",
+      "Save completed without an error dialog.",
       "The target file exists.",
       "The file contents match the provided content input.",
     ];

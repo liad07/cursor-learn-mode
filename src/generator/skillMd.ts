@@ -33,6 +33,8 @@ Use the tools currently available to the Cursor Agent.
 
 For Windows desktop interaction, use the existing Windows Computer MCP.
 
+For macOS desktop interaction, use the existing desktop / computer-use tools available in this Cursor session.
+
 For browser interaction, use the existing browser automation tools.
 
 For terminal interaction, use the existing terminal tools.

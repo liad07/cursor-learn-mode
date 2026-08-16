@@ -91,4 +91,51 @@ assert(preview.steps.length >= 4, "preview steps");
 assert(session.demonstrations.length === 1, "demonstrations[] present");
 assert(Array.isArray(session.narration), "narration[] present");
 
+const macEvents: LearnEvent[] = [
+  {
+    timestamp: "2026-08-16T10:00:00.000Z",
+    type: "app-change",
+    application: "TextEdit",
+    processName: "TextEdit",
+    windowTitle: "Untitled",
+  },
+  {
+    timestamp: "2026-08-16T10:00:02.000Z",
+    type: "text",
+    application: "TextEdit",
+    processName: "TextEdit",
+    windowTitle: "Untitled",
+    text: "Hello Mac",
+  },
+  {
+    timestamp: "2026-08-16T10:00:04.000Z",
+    type: "key",
+    application: "TextEdit",
+    processName: "TextEdit",
+    windowTitle: "Untitled",
+    key: "S",
+    modifiers: ["Cmd", "Shift"],
+  },
+];
+const macSteps = compressEvents(macEvents);
+assert(macSteps.some((s) => /textedit/i.test(s.application ?? "")), "TextEdit app");
+assert(macSteps.some((s) => /save as/i.test(s.intent)), "Cmd+Shift+S is Save As");
+const macSession: LearnSession = {
+  sessionId: "mac1",
+  startedAt: "t0",
+  endedAt: "t2",
+  demonstrations: [
+    {
+      id: "d1",
+      startedAt: "t0",
+      endedAt: "t2",
+      events: macEvents,
+      applications: ["TextEdit"],
+      screenshots: [],
+    },
+  ],
+  narration: [],
+};
+assert(analyzeSession(macSession).name === "create-text-file-with-textedit", "TextEdit skill name");
+
 console.log("compress.test.ts ok");

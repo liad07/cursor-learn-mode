@@ -34,6 +34,7 @@ assert(!/\bclick_at\b/.test(md), "skill must not mention click_at");
 assert(!/x=\d+/.test(md), "skill must not contain coordinates");
 assert(!/playwrightLocator/.test(md), "skill must not contain playwright locators");
 assert(/Windows Computer MCP/.test(md), "skill must point at existing Windows Computer MCP");
+assert(/macOS desktop/.test(md), "skill must mention macOS desktop tools");
 assert(/Do not invent a new automation engine/.test(md), "tool-agnostic reminder");
 assert(workflow.inputs.filename && workflow.inputs.content, "workflow inputs");
 assert(Array.isArray(workflow.demonstrations), "workflow tracks demonstrations");

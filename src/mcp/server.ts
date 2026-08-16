@@ -26,7 +26,7 @@ function fail(error: unknown) {
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "cursor-learn-mode", version: "0.1.0" });
+  const server = new McpServer({ name: "cursor-learn-mode", version: "0.2.0" });
 
   server.registerResource(
     "learn-ui",
@@ -169,8 +169,24 @@ export function createServer(): McpServer {
           state: "stopped",
           ...saved,
           message:
-            "Skill saved. In a new chat, ask Cursor to perform the task with new inputs. Cursor Agent will use existing Windows Computer MCP / browser / terminal tools. Learn Mode does not execute the workflow.",
+            "Skill saved. In a new chat, ask Cursor to perform the task with new inputs. The Agent uses existing desktop, browser, and terminal tools. Learn Mode does not execute the workflow.",
         });
+      } catch (error) {
+        return fail(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "learn_list",
+    {
+      title: "List Learned Skills",
+      description: "List Skills previously saved by Learn Mode under ~/.cursor/skills.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult({ skills: await learn.listSkills() });
       } catch (error) {
         return fail(error);
       }

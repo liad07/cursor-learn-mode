@@ -3,6 +3,7 @@ dist
 observer/bin
 observer/obj
 observer/dist
+observer-mac/dist
 .learn-recordings
 docs/demo/frames/*.png
 *.tsbuildinfo

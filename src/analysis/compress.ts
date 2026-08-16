@@ -1,9 +1,10 @@
 import type { LearnEvent, SemanticStep } from "../types.ts";
 
 const OVERLAY_PROCESS = /learnobserver|learn-mode|learn mode/i;
-const SAVE_AS = /save as|שמירה בשם|speichern unter|enregistrer sous/i;
+const SAVE_AS = /save as|שמירה בשם|speichern unter|enregistrer sous|export as/i;
 const SAVE = /^(save|שמור|speichern|enregistrer)$/i;
 const NOTEPAD = /notepad/i;
+const TEXTEDIT = /textedit/i;
 
 function isNoise(event: LearnEvent): boolean {
   const proc = event.processName ?? "";
@@ -15,7 +16,9 @@ function isNoise(event: LearnEvent): boolean {
 }
 
 function displayApp(event: LearnEvent): string | undefined {
-  if (event.processName && NOTEPAD.test(event.processName)) return "Notepad";
+  const proc = event.processName ?? "";
+  if (NOTEPAD.test(proc)) return "Notepad";
+  if (TEXTEDIT.test(proc) || TEXTEDIT.test(event.application ?? "")) return "TextEdit";
   return event.application || event.processName || undefined;
 }
 
@@ -111,10 +114,10 @@ export function compressEvents(events: LearnEvent[]): SemanticStep[] {
         });
         continue;
       }
-      if (/^(Ctrl\+Shift\+S)$/i.test(combo) || combo.toLowerCase() === "ctrl+s") {
+      if (/^(Ctrl\+Shift\+S|Cmd\+Shift\+S)$/i.test(combo) || /^(ctrl|cmd)\+s$/i.test(combo)) {
         flushText();
         push({
-          intent: combo.toLowerCase() === "ctrl+s" ? "Save the file" : "Open Save As",
+          intent: /s$/i.test(combo) && !/shift/i.test(combo) ? "Save the file" : "Open Save As",
           application: app,
           target: combo,
           kind: "save",
