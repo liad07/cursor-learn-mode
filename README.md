@@ -1,6 +1,5 @@
 # Cursor Learn Mode
 
-[![CI](https://github.com/liad07/cursor-learn-mode/actions/workflows/ci.yml/badge.svg)](https://github.com/liad07/cursor-learn-mode/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 <p align="center">
