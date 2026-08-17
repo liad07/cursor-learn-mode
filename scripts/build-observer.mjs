@@ -26,6 +26,8 @@ if (process.platform === "win32") {
     "ApplicationServices",
     "-framework",
     "CoreGraphics",
+    "-Xfrontend",
+    "-disable-availability-checking",
   ]);
 } else {
   console.error(`No Learn Observer for ${process.platform}. Use Windows or macOS.`);

@@ -296,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         extra.forEach { body[$0.key] = $0.value }
         guard let data = try? JSONSerialization.data(withJSONObject: body), let line = String(data: data, encoding: .utf8) else { return }
         gate.lock()
-        events?.write(contentsOf: Data((line + "\n").utf8))
+        try? events?.write(contentsOf: Data((line + "\n").utf8))
         Session.eventCount += 1
         gate.unlock()
     }
