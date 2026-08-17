@@ -10,6 +10,28 @@ const RESOURCE_URI = "ui://learn-mode/app.html";
 const MIME = "text/html;profile=mcp-app";
 const UI_DIR = path.dirname(fileURLToPath(import.meta.url));
 
+const stepSchema = z.object({
+  id: z.string().optional(),
+  intent: z.string().min(1),
+  application: z.string().optional(),
+  target: z.string().optional(),
+  inputKey: z.string().optional(),
+  constantValue: z.string().optional(),
+  kind: z
+    .enum([
+      "open-application",
+      "switch-application",
+      "type",
+      "click",
+      "shortcut",
+      "save",
+      "read",
+      "navigate",
+      "other",
+    ])
+    .optional(),
+});
+
 function jsonResult(data: unknown) {
   return {
     content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }],
@@ -26,7 +48,7 @@ function fail(error: unknown) {
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "cursor-learn-mode", version: "0.2.0" });
+  const server = new McpServer({ name: "cursor-learn-mode", version: "0.3.0" });
 
   server.registerResource(
     "learn-ui",
@@ -89,6 +111,28 @@ export function createServer(): McpServer {
   );
 
   server.registerTool(
+    "learn_add_demonstration",
+    {
+      title: "Teach Another Example",
+      description:
+        "After reviewing a stopped session, record another demonstration without overwriting previous ones. Re-analyzes all demos on the next learn_stop.",
+      inputSchema: {},
+      _meta: { ui: { resourceUri: RESOURCE_URI } },
+    },
+    async () => {
+      try {
+        const started = await learn.addDemonstration();
+        return jsonResult({
+          ...started,
+          message: "Recording another example. Demonstrate with different input values, then Stop.",
+        });
+      } catch (error) {
+        return fail(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "learn_status",
     {
       title: "Learn Status",
@@ -137,12 +181,16 @@ export function createServer(): McpServer {
           state: "stopped",
           sessionId: stopped.session.sessionId,
           sessionFile: stopped.sessionFile,
-          eventCount: stopped.session.demonstrations[0]?.events.length ?? 0,
+          eventCount: stopped.session.demonstrations.reduce((n, d) => n + d.events.length, 0),
           applications: stopped.preview.applications,
-          inputs: Object.keys(stopped.preview.inputs),
-          steps: stopped.preview.steps.map((step) => step.intent),
+          inputs: stopped.preview.inputs,
+          steps: stopped.preview.steps,
+          title: stopped.preview.title,
+          name: stopped.preview.name,
+          demonstrationIds: stopped.preview.demonstrationIds,
+          platform: stopped.preview.platform,
           preview: stopped.preview.previewText,
-          message: "Recording complete. Review the preview, then call learn_save to write a Cursor Skill.",
+          message: "Recording complete. Review the workflow, teach another example, or save the Skill.",
         });
       } catch (error) {
         return fail(error);
@@ -159,12 +207,13 @@ export function createServer(): McpServer {
         name: z.string().optional().describe("Skill folder name (kebab-case)"),
         title: z.string().optional().describe("Human title"),
         inputs: z.array(z.string()).optional().describe("Input keys to keep after user review"),
+        steps: z.array(stepSchema).optional().describe("Reviewed/edited semantic steps"),
       },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
-    async ({ name, title, inputs }) => {
+    async ({ name, title, inputs, steps }) => {
       try {
-        const saved = await learn.save({ name, title, inputs });
+        const saved = await learn.save({ name, title, inputs, steps });
         return jsonResult({
           state: "stopped",
           ...saved,

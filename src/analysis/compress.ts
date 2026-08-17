@@ -1,64 +1,53 @@
+import { cleanLabel, displayApp, isNoise, normalizeEvents } from "./normalize.ts";
+import { inferInputKey, intentForInput, isSaveAsContext } from "./inputs.ts";
 import type { LearnEvent, SemanticStep } from "../types.ts";
 
-const OVERLAY_PROCESS = /learnobserver|learn-mode|learn mode/i;
 const SAVE_AS = /save as|שמירה בשם|speichern unter|enregistrer sous|export as/i;
 const SAVE = /^(save|שמור|speichern|enregistrer)$/i;
-const NOTEPAD = /notepad/i;
-const TEXTEDIT = /textedit/i;
 
-function isNoise(event: LearnEvent): boolean {
-  const proc = event.processName ?? "";
-  const app = event.application ?? "";
-  const title = event.windowTitle ?? "";
-  if (OVERLAY_PROCESS.test(proc) || OVERLAY_PROCESS.test(app) || OVERLAY_PROCESS.test(title)) return true;
-  if (event.type === "key" && event.text) return false;
-  return false;
-}
-
-function displayApp(event: LearnEvent): string | undefined {
-  const proc = event.processName ?? "";
-  if (NOTEPAD.test(proc)) return "Notepad";
-  if (TEXTEDIT.test(proc) || TEXTEDIT.test(event.application ?? "")) return "TextEdit";
-  return event.application || event.processName || undefined;
-}
-
-function isSaveAsContext(event: LearnEvent): boolean {
-  return Boolean(event.windowTitle && SAVE_AS.test(event.windowTitle));
-}
+export type CompressResult = {
+  steps: SemanticStep[];
+  typedValues: { key: string; value: string }[];
+};
 
 export function compressEvents(events: LearnEvent[]): SemanticStep[] {
+  return compressToSemantics(events).steps;
+}
+
+export function compressToSemantics(events: LearnEvent[]): CompressResult {
+  const normalized = normalizeEvents(events);
   const steps: SemanticStep[] = [];
+  const typedValues: { key: string; value: string }[] = [];
+  const usedKeys = new Set<string>();
   let lastApp: string | undefined;
   let textBuffer = "";
   let textApp: string | undefined;
   let textTarget: string | undefined;
-  let textSaveAs = false;
+  let textLabel: string | undefined;
+  let textKey: string | undefined;
+  let textSeed: LearnEvent | undefined;
   let n = 0;
 
   const flushText = () => {
     const value = textBuffer.trim();
     textBuffer = "";
-    if (!value) return;
-    n += 1;
-    if (textSaveAs) {
-      steps.push({
-        id: `s${n}`,
-        intent: "Enter the destination file name",
-        application: textApp,
-        target: "Save As file name",
-        inputKey: "filename",
-        kind: "type",
-      });
+    if (!value || !textKey) {
+      textKey = undefined;
+      textSeed = undefined;
       return;
     }
+    n += 1;
     steps.push({
       id: `s${n}`,
-      intent: "Type the document content",
+      intent: intentForInput(textKey, textLabel),
       application: textApp,
-      target: textTarget || "document",
-      inputKey: "content",
+      target: textTarget || textLabel || textKey,
+      inputKey: textKey,
       kind: "type",
     });
+    typedValues.push({ key: textKey, value });
+    textKey = undefined;
+    textSeed = undefined;
   };
 
   const push = (step: Omit<SemanticStep, "id">) => {
@@ -66,15 +55,26 @@ export function compressEvents(events: LearnEvent[]): SemanticStep[] {
     steps.push({ id: `s${n}`, ...step });
   };
 
-  for (const event of events) {
+  for (const event of normalized) {
     if (isNoise(event)) continue;
-    const app = displayApp(event);
+    const app = displayApp(event) ?? event.application;
 
     if (event.type === "text" && event.text) {
-      if (textBuffer && (textApp !== app || textSaveAs !== isSaveAsContext(event))) flushText();
+      if (event.redacted) {
+        flushText();
+        continue;
+      }
+      const sameField =
+        textBuffer &&
+        textApp === app &&
+        textTarget === (event.element?.name || event.element?.controlType) &&
+        isSaveAsContext(event) === (textSeed ? isSaveAsContext(textSeed) : false);
+      if (textBuffer && !sameField) flushText();
       textApp = app;
       textTarget = event.element?.name || event.element?.controlType;
-      textSaveAs = isSaveAsContext(event);
+      textLabel = cleanLabel(event.element?.name);
+      textSeed = event;
+      if (!textKey) textKey = inferInputKey(event, usedKeys);
       textBuffer += event.text;
       continue;
     }
@@ -98,6 +98,14 @@ export function compressEvents(events: LearnEvent[]): SemanticStep[] {
           target: event.windowTitle,
           kind: "save",
         });
+      } else if (event.windowTitle && /issues?|new issue|pull request/i.test(event.windowTitle)) {
+        flushText();
+        push({
+          intent: `Navigate to ${event.windowTitle}`,
+          application: app,
+          target: event.windowTitle,
+          kind: "navigate",
+        });
       }
       continue;
     }
@@ -117,7 +125,7 @@ export function compressEvents(events: LearnEvent[]): SemanticStep[] {
       if (/^(Ctrl\+Shift\+S|Cmd\+Shift\+S)$/i.test(combo) || /^(ctrl|cmd)\+s$/i.test(combo)) {
         flushText();
         push({
-          intent: /s$/i.test(combo) && !/shift/i.test(combo) ? "Save the file" : "Open Save As",
+          intent: /shift/i.test(combo) ? "Open Save As" : "Save the file",
           application: app,
           target: combo,
           kind: "save",
@@ -158,6 +166,15 @@ export function compressEvents(events: LearnEvent[]): SemanticStep[] {
         });
         continue;
       }
+      if (name && /submit|create|create issue|post|send/i.test(name)) {
+        push({
+          intent: `Click "${name}"`,
+          application: app,
+          target: name,
+          kind: "click",
+        });
+        continue;
+      }
       if (name) {
         push({
           intent: `Click "${name}"`,
@@ -185,14 +202,14 @@ export function compressEvents(events: LearnEvent[]): SemanticStep[] {
   }
 
   flushText();
-  return dedupeSteps(steps);
+  return { steps: dedupeSteps(steps), typedValues };
 }
 
 function dedupeSteps(steps: SemanticStep[]): SemanticStep[] {
   const out: SemanticStep[] = [];
   for (const step of steps) {
     const prev = out[out.length - 1];
-    if (prev && prev.intent === step.intent && prev.application === step.application && prev.kind === step.kind) {
+    if (prev && prev.intent === step.intent && prev.application === step.application && prev.kind === step.kind && prev.inputKey === step.inputKey) {
       continue;
     }
     out.push(step);

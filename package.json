@@ -1,9 +1,21 @@
 {
   "name": "cursor-learn-mode",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Cursor Learn Mode: record a Windows or macOS demonstration, generate a reusable Skill. Replay uses existing Cursor tools.",
+  "description": "Teach Cursor desktop and browser workflows by demonstration. Learn Mode records intent and saves a Skill — not a mouse macro.",
+  "bin": {
+    "cursor-learn-mode": "./scripts/cli.mjs"
+  },
+  "files": [
+    "src",
+    "observer",
+    "observer-mac",
+    "scripts",
+    "mcp.json.example",
+    "LICENSE",
+    "README.md"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/liad07/cursor-learn-mode.git"
@@ -24,6 +36,7 @@
   "scripts": {
     "mcp": "tsx src/mcp/server.ts",
     "build-observer": "node scripts/build-observer.mjs",
+    "install-mcp": "node scripts/install.mjs",
     "test": "tsx src/__tests__/run-all.ts",
     "typecheck": "tsc --noEmit"
   },

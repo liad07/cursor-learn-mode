@@ -79,6 +79,11 @@ export async function startObserver(sessionDir: string): Promise<ObserverHandle>
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
     detached: false,
+    env: {
+      ...process.env,
+      LEARN_SCREENSHOTS: process.env.LEARN_SCREENSHOTS ?? "1",
+      LEARN_CLIPBOARD: process.env.LEARN_CLIPBOARD ?? "0",
+    },
   });
   child.stderr?.on("data", () => {
     // keep MCP stdio clean

@@ -1,7 +1,7 @@
 import type { Demonstration, LearnEvent, LearnSession } from "./types.ts";
 
 const SENSITIVE_NAME =
-  /pass(word|wd|code)?|secret|token|authorization|api[_-]?key|session|cookie|csrf|otp|ssn|credit|cvv|private.?key/i;
+  /\b(password|passwd|passcode|secret|token|authorization|api[-_ ]?key|session.?id|cookie|csrf|otp|ssn|credit.?card|cvv|private.?key)\b/i;
 
 const SENSITIVE_TEXT =
   /Bearer\s+[A-Za-z0-9\-._~+/]+=*|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}/g;

@@ -7,9 +7,18 @@ export function renderSkillMarkdown(workflow: Workflow): string {
         .map(([key, spec]) => `- ${key} (${spec.type}${spec.required ? ", required" : ""})${spec.example ? ` — example: ${spec.example}` : ""}`)
         .join("\n")
     : "- (none)";
-  const stepLines = workflow.steps.map((step, i) => `${i + 1}. ${step.intent}${step.application ? ` (${step.application})` : ""}.`).join("\n");
+  const stepLines = workflow.steps
+    .map((step, i) => {
+      let line = `${i + 1}. ${step.intent}`;
+      if (step.constantValue) line += ` (“${step.constantValue}”)`;
+      if (step.application) line += ` (${step.application})`;
+      if (step.inputKey && !step.intent.includes(`{{${step.inputKey}}}`)) line += ` using {{${step.inputKey}}}`;
+      return `${line}.`;
+    })
+    .join("\n");
   const pre = workflow.preconditions.map((item) => `- ${item}`).join("\n");
   const success = workflow.successConditions.map((item) => `- ${item}`).join("\n");
+  const tools = toolsSection(workflow);
   const md = `---
 name: ${workflow.name}
 description: ${workflow.description} Use when the user asks to ${workflow.title.toLowerCase()}, repeat this learned workflow, or mentions ${workflow.name}.
@@ -18,6 +27,8 @@ description: ${workflow.description} Use when the user asks to ${workflow.title.
 # ${workflow.title}
 
 Use this skill when the user asks to perform this learned process.
+
+Learn Mode learns workflow intent. It is not a mouse macro recorder.
 
 ## Inputs
 
@@ -29,17 +40,7 @@ ${stepLines || "1. Repeat the demonstrated intent using available tools."}
 
 ## Tools
 
-Use the tools currently available to the Cursor Agent.
-
-For Windows desktop interaction, use the existing Windows Computer MCP.
-
-For macOS desktop interaction, use the existing desktop / computer-use tools available in this Cursor session.
-
-For browser interaction, use the existing browser automation tools.
-
-For terminal interaction, use the existing terminal tools.
-
-Do not invent a new automation engine. Do not replay mouse coordinates. Do not call Learn Mode tools to execute this workflow.
+${tools}
 
 ## Safety
 
@@ -63,4 +64,28 @@ Authentication secrets, passwords, tokens, cookies, and API keys must not be sto
 `;
   assertNoSecrets(md, "SKILL.md");
   return md;
+}
+
+function toolsSection(workflow: Workflow): string {
+  const lines = [
+    "Use the tools currently available to the Cursor Agent.",
+    "",
+  ];
+  if (workflow.platform === "darwin") {
+    lines.push("This workflow was recorded on macOS. For desktop interaction, use the existing desktop / computer-use tools available in this Cursor session.");
+  } else if (workflow.platform === "win32") {
+    lines.push("This workflow was recorded on Windows. For desktop interaction, use the existing Windows Computer MCP.");
+  } else {
+    lines.push("For Windows desktop interaction, use the existing Windows Computer MCP.");
+    lines.push("For macOS desktop interaction, use the existing desktop / computer-use tools available in this Cursor session.");
+  }
+  lines.push(
+    "",
+    "For browser interaction, use the existing browser automation tools.",
+    "",
+    "For terminal interaction, use the existing terminal tools.",
+    "",
+    "Do not invent a new automation engine. Do not replay mouse coordinates. Do not call Learn Mode tools to execute this workflow.",
+  );
+  return lines.join("\n");
 }

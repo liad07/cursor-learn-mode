@@ -9,6 +9,8 @@ export type LearnEventType =
   | "screenshot"
   | "narration";
 
+export type PlatformId = "win32" | "darwin" | "unknown";
+
 export type UiElement = {
   name?: string;
   controlType?: string;
@@ -41,6 +43,12 @@ export type ScreenshotRef = {
   reason: string;
 };
 
+export type RecordingOptions = {
+  screenshots: boolean;
+  clipboard: boolean;
+  privacyMode: boolean;
+};
+
 export type Demonstration = {
   id: string;
   startedAt: string;
@@ -60,6 +68,9 @@ export type LearnSession = {
   sessionId: string;
   startedAt: string;
   endedAt?: string;
+  platform?: PlatformId;
+  recordedWith?: { name: string; version: string };
+  recordingOptions?: RecordingOptions;
   demonstrations: Demonstration[];
   narration: NarrationNote[];
 };
@@ -86,6 +97,7 @@ export type SemanticStep = {
     | "shortcut"
     | "save"
     | "read"
+    | "navigate"
     | "other";
 };
 
@@ -94,6 +106,8 @@ export type Workflow = {
   title: string;
   description: string;
   version: number;
+  platform?: PlatformId;
+  recordedWith?: { name: string; version: string };
   inputs: Record<string, WorkflowInput>;
   applications: string[];
   steps: SemanticStep[];
@@ -112,6 +126,8 @@ export type AnalysisPreview = {
   preconditions: string[];
   successConditions: string[];
   previewText: string;
+  platform?: PlatformId;
+  demonstrationIds: string[];
 };
 
 export type ObserverStatus = {
@@ -120,4 +136,19 @@ export type ObserverStatus = {
   startedAt?: string;
   eventCount: number;
   elapsedMs: number;
+};
+
+export type WorkflowSaveEdits = {
+  name?: string;
+  title?: string;
+  inputs?: string[];
+  steps?: Array<{
+    id?: string;
+    intent: string;
+    application?: string;
+    target?: string;
+    inputKey?: string;
+    constantValue?: string;
+    kind?: SemanticStep["kind"];
+  }>;
 };

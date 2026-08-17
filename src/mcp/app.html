@@ -20,18 +20,35 @@
       background: #1c1c22;
     }
     h1 { font-size: 18px; margin: 0 0 8px; }
+    h2 { font-size: 13px; margin: 14px 0 8px; color: #a1a1aa; font-weight: 600; }
     p { margin: 0 0 12px; color: #d4d4d8; font-size: 13px; line-height: 1.45; }
     .meta { color: #a1a1aa; font-size: 13px; margin-bottom: 8px; }
-    pre {
-      white-space: pre-wrap;
-      background: #111114;
+    label { display: block; font-size: 12px; color: #a1a1aa; margin: 8px 0 4px; }
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #3f3f46;
       border-radius: 8px;
-      padding: 10px;
-      font-size: 12px;
-      max-height: 220px;
-      overflow: auto;
+      background: #111114;
+      color: #f4f4f5;
+      padding: 8px 10px;
+      font-size: 13px;
     }
-    .row { display: flex; gap: 8px; margin-top: 12px; }
+    .checks label { display: flex; align-items: center; gap: 8px; margin: 6px 0; color: #e4e4e7; font-size: 13px; }
+    .step {
+      display: grid;
+      grid-template-columns: 28px 1fr auto auto;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .step span { color: #71717a; font-size: 12px; }
+    .step button {
+      flex: 0;
+      padding: 6px 8px;
+      font-size: 11px;
+    }
+    .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
     button {
       flex: 1;
       border: 0;
@@ -39,6 +56,7 @@
       padding: 10px 12px;
       font-weight: 600;
       cursor: pointer;
+      min-width: 110px;
     }
     .start { background: #dc2626; color: white; }
     .pause { background: #3f3f46; color: white; }
@@ -46,6 +64,7 @@
     .save { background: #2563eb; color: white; }
     .ghost { background: transparent; color: #a1a1aa; border: 1px solid #3f3f46; }
     button:disabled { opacity: .45; cursor: default; }
+    #editor { display: none; }
   </style>
 </head>
 <body>
@@ -53,7 +72,16 @@
     <h1 id="title">🧠 Learn Workflow</h1>
     <p id="subtitle">Teach Cursor a new process</p>
     <div class="meta" id="meta"></div>
-    <pre id="preview" hidden></pre>
+    <div id="editor">
+      <label for="edit-title">Workflow title</label>
+      <input id="edit-title" type="text" />
+      <label for="edit-name">Skill name</label>
+      <input id="edit-name" type="text" />
+      <h2>Inputs</h2>
+      <div class="checks" id="edit-inputs"></div>
+      <h2>Steps</h2>
+      <div id="edit-steps"></div>
+    </div>
     <div class="row" id="actions">
       <button class="start" id="start">🔴 Start Learning</button>
     </div>
@@ -65,6 +93,7 @@
     let view = "";
     let busy = false;
     let queued = null;
+    let draft = { title: "", name: "", inputs: {}, steps: [] };
 
     window.addEventListener("message", (event) => {
       const msg = event.data;
@@ -89,7 +118,7 @@
 
     async function callTool(name, args) {
       if (busy) {
-        if (name === "learn_stop" || name === "learn_discard") queued = { name: name, args: args };
+        if (name === "learn_stop" || name === "learn_discard" || name === "learn_save" || name === "learn_add_demonstration") queued = { name: name, args: args };
         return;
       }
       busy = true;
@@ -115,11 +144,12 @@
         learn_pause: "pause",
         learn_save: "save",
         learn_discard: "discard",
+        learn_add_demonstration: "another",
       };
       const el = document.getElementById(ids[name] || "");
       if (!el) return;
       el.disabled = true;
-      if (name === "learn_start") el.textContent = "Starting…";
+      if (name === "learn_start" || name === "learn_add_demonstration") el.textContent = "Starting…";
       if (name === "learn_stop") el.textContent = "Stopping…";
       if (name === "learn_save") el.textContent = "Saving…";
     }
@@ -128,9 +158,21 @@
       if (!result) return;
       const sc = result.structuredContent || result;
       if (sc.state) state = sc.state;
-      if (sc.preview) {
-        document.getElementById("preview").hidden = false;
-        document.getElementById("preview").textContent = sc.preview;
+      if (sc.title || sc.name || sc.inputs || sc.steps) {
+        draft.title = sc.title || draft.title || "";
+        draft.name = sc.name || draft.name || "";
+        draft.inputs = sc.inputs || draft.inputs || {};
+        draft.steps = Array.isArray(sc.steps)
+          ? sc.steps.map((step, i) => ({
+              id: step.id || ("s" + (i + 1)),
+              intent: step.intent || String(step),
+              application: step.application,
+              target: step.target,
+              inputKey: step.inputKey,
+              kind: step.kind || "other",
+            }))
+          : draft.steps;
+        renderEditor();
       }
       render();
       if (typeof sc.eventCount === "number" || sc.elapsedMs) {
@@ -143,6 +185,73 @@
       if (sc.message && state === "idle") {
         document.getElementById("subtitle").textContent = sc.message;
       }
+    }
+
+    function renderEditor() {
+      document.getElementById("edit-title").value = draft.title || "";
+      document.getElementById("edit-name").value = draft.name || "";
+      const inputs = document.getElementById("edit-inputs");
+      const keys = Object.keys(draft.inputs || {});
+      inputs.innerHTML = keys.length
+        ? keys.map((key) => {
+            const example = draft.inputs[key]?.example ? " — " + draft.inputs[key].example : "";
+            return '<label><input type="checkbox" data-input="' + key + '" checked /> ' + key + example + "</label>";
+          }).join("")
+        : "<p>No inputs detected.</p>";
+      const steps = document.getElementById("edit-steps");
+      steps.innerHTML = (draft.steps || []).map((step, index) => {
+        return (
+          '<div class="step" data-index="' + index + '">' +
+          "<span>" + (index + 1) + "</span>" +
+          '<input type="text" value="' + escapeAttr(step.intent) + '" data-step-intent />' +
+          '<button type="button" class="ghost" data-up>↑</button>' +
+          '<button type="button" class="ghost" data-del>✕</button>' +
+          "</div>"
+        );
+      }).join("") || "<p>No steps detected.</p>";
+      steps.querySelectorAll("[data-up]").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.closest(".step").dataset.index);
+          if (idx <= 0) return;
+          const tmp = draft.steps[idx - 1];
+          draft.steps[idx - 1] = draft.steps[idx];
+          draft.steps[idx] = tmp;
+          renderEditor();
+        };
+      });
+      steps.querySelectorAll("[data-del]").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.closest(".step").dataset.index);
+          draft.steps.splice(idx, 1);
+          renderEditor();
+        };
+      });
+    }
+
+    function escapeAttr(value) {
+      return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    }
+
+    function collectEdits() {
+      draft.title = document.getElementById("edit-title").value.trim();
+      draft.name = document.getElementById("edit-name").value.trim();
+      const kept = [];
+      document.querySelectorAll("#edit-inputs input[type=checkbox]").forEach((el) => {
+        if (el.checked) kept.push(el.getAttribute("data-input"));
+      });
+      const intents = [];
+      document.querySelectorAll("#edit-steps [data-step-intent]").forEach((el, i) => {
+        if (!draft.steps[i]) return;
+        draft.steps[i].intent = el.value.trim() || draft.steps[i].intent;
+        intents.push(draft.steps[i]);
+      });
+      draft.steps = intents;
+      return {
+        title: draft.title || undefined,
+        name: draft.name || undefined,
+        inputs: kept,
+        steps: draft.steps,
+      };
     }
 
     function viewFor(s) {
@@ -160,16 +269,19 @@
       const actions = document.getElementById("actions");
       const title = document.getElementById("title");
       const subtitle = document.getElementById("subtitle");
+      const editor = document.getElementById("editor");
       const next = viewFor(state);
+      editor.style.display = next === "stopped" ? "block" : "none";
       if (next === view) {
         if (!busy) {
-          ["start", "pause", "stop", "save", "discard"].forEach((id) => {
+          ["start", "pause", "stop", "save", "discard", "another"].forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             el.disabled = false;
             if (id === "start") el.textContent = "🔴 Start Learning";
             if (id === "stop") el.textContent = "■ Stop";
             if (id === "save") el.textContent = "Save Skill";
+            if (id === "another") el.textContent = "Teach Another Example";
           });
         }
         if (next === "live") {
@@ -191,12 +303,15 @@
       }
       if (next === "stopped") {
         title.textContent = "🧠 Workflow Learned";
-        subtitle.textContent = "Review the steps, then save a Cursor Skill.";
+        subtitle.textContent = "Review, edit, teach another example, or save a Cursor Skill.";
+        renderEditor();
         actions.innerHTML =
           '<button class="ghost" id="discard">Discard</button>' +
+          '<button class="ghost" id="another">Teach Another Example</button>' +
           '<button class="save" id="save">Save Skill</button>';
         document.getElementById("discard").onclick = () => callTool("learn_discard");
-        document.getElementById("save").onclick = () => callTool("learn_save");
+        document.getElementById("another").onclick = () => callTool("learn_add_demonstration");
+        document.getElementById("save").onclick = () => callTool("learn_save", collectEdits());
         return;
       }
       title.textContent = "🧠 Learn Workflow";

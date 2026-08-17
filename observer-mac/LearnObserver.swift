@@ -9,6 +9,45 @@ final class Session {
     static var eventCount = 0
     static var paused = false
     static var stopping = false
+    static var screenshotsEnabled = true
+    static var clipboardEnabled = false
+}
+
+func envFlag(_ name: String, default defaultValue: Bool) -> Bool {
+    guard let raw = ProcessInfo.processInfo.environment[name]?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !raw.isEmpty else { return defaultValue }
+    switch raw.lowercased() {
+    case "0", "false", "no", "off": return false
+    case "1", "true", "yes", "on": return true
+    default: return defaultValue
+    }
+}
+
+let sensitiveNamePattern = try! NSRegularExpression(
+    pattern: "\\b(password|passwd|passcode|secret|token|authorization|api[-_ ]?key|session.?id|cookie|csrf|otp|ssn|credit.?card|cvv|private.?key)\\b",
+    options: [.caseInsensitive]
+)
+
+func axString(_ element: AXUIElement, _ attribute: CFString) -> String? {
+    var value: AnyObject?
+    AXUIElementCopyAttributeValue(element, attribute, &value)
+    return value as? String
+}
+
+func isSensitiveElement(_ element: AXUIElement) -> Bool {
+    let role = (axString(element, kAXRoleAttribute as CFString) ?? "").lowercased()
+    let subrole = (axString(element, kAXSubroleAttribute as CFString) ?? "").lowercased()
+    if role.contains("secure") || subrole.contains("secure") { return true }
+    if role == (kAXTextFieldRole as String).lowercased() && subrole.contains("secure") { return true }
+    let labels = [
+        axString(element, kAXTitleAttribute as CFString),
+        axString(element, kAXDescriptionAttribute as CFString),
+        axString(element, kAXIdentifierAttribute as CFString),
+        axString(element, kAXPlaceholderValueAttribute as CFString),
+    ].compactMap { $0 }.joined(separator: " ")
+    guard !labels.isEmpty else { return false }
+    let range = NSRange(location: 0, length: (labels as NSString).length)
+    return sensitiveNamePattern.firstMatch(in: labels, options: [], range: range) != nil
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -33,10 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         Session.dir = CommandLine.arguments[idx + 1]
         Session.startedAt = Date()
+        Session.screenshotsEnabled = envFlag("LEARN_SCREENSHOTS", default: true)
+        Session.clipboardEnabled = envFlag("LEARN_CLIPBOARD", default: false)
         try? FileManager.default.createDirectory(atPath: (Session.dir as NSString).appendingPathComponent("screenshots"), withIntermediateDirectories: true)
         let eventsPath = (Session.dir as NSString).appendingPathComponent("events.jsonl")
         FileManager.default.createFile(atPath: eventsPath, contents: nil)
         events = FileHandle(forWritingAtPath: eventsPath)
+        writePrivacyOptions()
 
         overlay = OverlayPanel()
         overlay?.onStop = { [weak self] in self?.requestStop() }
@@ -52,6 +94,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(appChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             self?.onClick(event)
+        }
+        if Session.clipboardEnabled {
+            NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "c" {
+                    self?.onClipboardCopy()
+                }
+            }
         }
         poll = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             self?.tick()
@@ -95,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         flushText()
         let ctx = readContext()
         var extra: [String: Any] = ["type": "click", "button": "left"]
-        if !ctx.isPassword, let shot = maybeScreenshot(reason: "click") {
+        if let shot = captureScreenshotIfAllowed(reason: "click", context: ctx) {
             extra["screenshot"] = shot
         }
         emit(extra, ctx)
@@ -109,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ctrl = flags.contains(.maskControl)
         let shift = flags.contains(.maskShift)
         let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-        if ctrl && shift && keycode == 37 { // L
+        if ctrl && shift && keycode == 37 {
             DispatchQueue.main.async { self.requestStop() }
             return
         }
@@ -140,7 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.emit(["type": "key", "key": name, "modifiers": modifiers], ctx)
                 return
             }
-            if ctx.isPassword {
+            if ctx.isSensitive {
                 self.emit(["type": "text", "text": "[REDACTED]", "redacted": true], ctx)
                 return
             }
@@ -149,6 +198,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.lastTextFlush = Date()
             }
         }
+    }
+
+    private func onClipboardCopy() {
+        if Session.paused || Session.stopping || !Session.clipboardEnabled { return }
+        let ctx = readContext()
+        let pasteboard = NSPasteboard.general
+        let text = pasteboard.string(forType: .string) ?? ""
+        if text.isEmpty { return }
+        let secret = ctx.isSensitive || looksSecret(text)
+        emit([
+            "type": "clipboard",
+            "clipboardPreview": secret ? "[REDACTED]" : (text.count <= 80 && !text.contains("\n") ? text.trimmingCharacters(in: .whitespacesAndNewlines) : "[copied]"),
+            "redacted": secret,
+        ], ctx)
+    }
+
+    private func looksSecret(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("bearer ")
+            || lower.contains("begin ")
+            || lower.contains("password")
+            || text.hasPrefix("ghp_")
+            || text.hasPrefix("github_pat_")
+            || text.hasPrefix("sk-")
+            || text.hasPrefix("AKIA")
+            || text.hasPrefix("eyJ")
     }
 
     private func tick() {
@@ -189,9 +264,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let text = textBuf
         textBuf = ""
         if text.isEmpty { return }
-        var ctx = readContext()
-        let value = ctx.isPassword ? "[REDACTED]" : text
-        emit(["type": "text", "text": value, "redacted": ctx.isPassword], ctx)
+        let ctx = readContext()
+        let value = ctx.isSensitive ? "[REDACTED]" : text
+        emit(["type": "text", "text": value, "redacted": ctx.isSensitive], ctx)
     }
 
     private func emitWindow(type: String, takeShot: Bool) {
@@ -204,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastTitle = ctx.title
         let eventType = appChanged ? "app-change" : type
         var extra: [String: Any] = ["type": eventType]
-        if takeShot, let shot = maybeScreenshot(reason: eventType) {
+        if takeShot, let shot = captureScreenshotIfAllowed(reason: eventType, context: ctx) {
             extra["screenshot"] = shot
         }
         emit(extra, ctx)
@@ -231,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let processName = app?.localizedName ?? app?.bundleIdentifier ?? ""
         let title = frontWindowTitle() ?? ""
         let focused = focusedElement()
-        return Context(processName: processName, title: title, element: focused.dict, isPassword: focused.isPassword)
+        return Context(processName: processName, title: title, element: focused.dict, isSensitive: focused.isSensitive)
     }
 
     private func frontWindowTitle() -> String? {
@@ -247,31 +322,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return title as? String
     }
 
-    private func focusedElement() -> (dict: [String: Any]?, isPassword: Bool) {
+    private func focusedElement() -> (dict: [String: Any]?, isSensitive: Bool) {
         let system = AXUIElementCreateSystemWide()
         var focused: AnyObject?
         AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused)
         guard let el = focused else { return (nil, false) }
         let element = el as! AXUIElement
-        var role: AnyObject?
-        var name: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
-        AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &name)
-        if name == nil {
-            AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &name)
+        let roleName = axString(element, kAXRoleAttribute as CFString) ?? ""
+        let subrole = axString(element, kAXSubroleAttribute as CFString) ?? ""
+        var name = axString(element, kAXTitleAttribute as CFString)
+        if name == nil || name?.isEmpty == true {
+            name = axString(element, kAXDescriptionAttribute as CFString)
         }
-        let roleName = role as? String ?? ""
-        let isPassword = roleName.lowercased().contains("secure")
+        if name == nil || name?.isEmpty == true {
+            name = axString(element, kAXPlaceholderValueAttribute as CFString)
+        }
+        let sensitive = isSensitiveElement(element)
         return ([
-            "name": (name as? String) ?? "",
+            "name": name ?? "",
             "controlType": roleName,
-            "isPassword": isPassword,
-        ], isPassword)
+            "automationId": axString(element, kAXIdentifierAttribute as CFString) ?? "",
+            "className": subrole,
+            "isPassword": sensitive,
+        ], sensitive)
     }
 
-    private func maybeScreenshot(reason: String) -> String? {
+    private func captureScreenshotIfAllowed(reason: String, context: Context) -> String? {
+        if Session.paused || Session.stopping { return nil }
+        if !Session.screenshotsEnabled { return nil }
+        if context.isSensitive { return nil }
         if Date().timeIntervalSince(lastShot) < 0.4 { return nil }
-        guard let image = CGDisplayCreateImage(CGMainDisplayID()) else { return nil }
+        return captureWindowOrDisplay(reason: reason)
+    }
+
+    private func captureWindowOrDisplay(reason: String) -> String? {
+        guard let image = captureFrontWindowImage() else { return nil }
         let bitmap = NSBitmapImageRep(cgImage: image)
         guard let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.45]) else { return nil }
         let name = String(format: "%.0f-%@.jpg", Date().timeIntervalSince1970 * 1000, reason)
@@ -280,6 +365,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? data.write(to: URL(fileURLWithPath: path))
         lastShot = Date()
         return rel
+    }
+
+    private func captureFrontWindowImage() -> CGImage? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let pid = app.processIdentifier
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        for info in windowList {
+            guard let owner = info[kCGWindowOwnerPID as String] as? pid_t, owner == pid else { continue }
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
+            guard let windowId = info[kCGWindowNumber as String] as? CGWindowID else { continue }
+            if let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowId, [.boundsIgnoreFraming, .bestResolution]) {
+                return image
+            }
+        }
+        return nil
     }
 
     private func friendlyApp(_ processName: String) -> String {
@@ -291,6 +393,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if lower.contains("terminal") { return "Terminal" }
         if lower.contains("notepad") { return "Notepad" }
         return processName.isEmpty ? "Unknown" : processName
+    }
+
+    private func writePrivacyOptions() {
+        let body: [String: Any] = [
+            "screenshots": Session.screenshotsEnabled,
+            "clipboard": Session.clipboardEnabled,
+            "privacyMode": !Session.screenshotsEnabled || !Session.clipboardEnabled,
+        ]
+        let dest = (Session.dir as NSString).appendingPathComponent("privacy.json")
+        if let data = try? JSONSerialization.data(withJSONObject: body) {
+            try? data.write(to: URL(fileURLWithPath: dest))
+        }
     }
 
     private func writeStatus(state: String, error: String? = nil) {
@@ -312,7 +426,7 @@ struct Context {
     var processName: String
     var title: String
     var element: [String: Any]?
-    var isPassword: Bool
+    var isSensitive: Bool
 }
 
 final class OverlayPanel: NSPanel {

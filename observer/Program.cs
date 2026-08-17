@@ -17,6 +17,20 @@ internal static class Session
     public static int EventCount;
     public static bool Paused;
     public static bool Stopping;
+    public static bool ScreenshotsEnabled = EnvFlag("LEARN_SCREENSHOTS", true);
+    public static bool ClipboardEnabled = EnvFlag("LEARN_CLIPBOARD", false);
+
+    private static bool EnvFlag(string name, bool fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        return raw.Trim() switch
+        {
+            "0" or "false" or "False" or "no" or "off" or "OFF" => false,
+            "1" or "true" or "True" or "yes" or "on" or "ON" => true,
+            _ => fallback,
+        };
+    }
 }
 
 internal static class Program
@@ -64,9 +78,10 @@ internal static class Program
         _overlay = new OverlayForm();
         _overlay.StopRequested += RequestStop;
         _overlay.PauseRequested += TogglePause;
+        WritePrivacyOptions();
         _overlay.HandleCreated += (_, _) =>
         {
-            Win32.AddClipboardFormatListener(_overlay.Handle);
+            if (Session.ClipboardEnabled) Win32.AddClipboardFormatListener(_overlay.Handle);
             InstallHooks();
             if (!Session.Stopping) WriteStatus("recording");
         };
@@ -288,14 +303,29 @@ internal static class Program
 
     private static string? MaybeScreenshot(IntPtr hwnd, string reason)
     {
+        if (!Session.ScreenshotsEnabled || Session.Paused || Session.Stopping) return null;
         if ((DateTime.UtcNow - _lastShot).TotalMilliseconds < 400) return null;
         if (hwnd == IntPtr.Zero) hwnd = Win32.GetForegroundWindow();
         if (_overlay != null && hwnd == _overlay.Handle) return null;
         try
         {
             var focused = AutomationElement.FocusedElement;
-            if (focused != null && (bool)focused.GetCurrentPropertyValue(AutomationElement.IsPasswordProperty))
-                return null;
+            if (focused != null)
+            {
+                if ((bool)focused.GetCurrentPropertyValue(AutomationElement.IsPasswordProperty)) return null;
+                var name = focused.Current.Name ?? "";
+                var automationId = focused.Current.AutomationId ?? "";
+                if (LooksSensitiveLabel(name) || LooksSensitiveLabel(automationId)) return null;
+                var walker = TreeWalker.ControlViewWalker;
+                var current = focused;
+                for (var i = 0; i < 4 && current != null; i++)
+                {
+                    current = walker.GetParent(current);
+                    if (current == null) break;
+                    if (LooksSensitiveLabel(current.Current.Name ?? "") || LooksSensitiveLabel(current.Current.AutomationId ?? ""))
+                        return null;
+                }
+            }
         }
         catch { /* ignore */ }
         if (!Win32.GetWindowRect(hwnd, out var rect)) return null;
@@ -365,6 +395,8 @@ internal static class Program
             {
                 isPassword = (bool)target.GetCurrentPropertyValue(AutomationElement.IsPasswordProperty);
                 element = Describe(target);
+                if (LooksSensitiveLabel(element.Name ?? "") || LooksSensitiveLabel(element.AutomationId ?? ""))
+                    isPassword = true;
                 if (string.IsNullOrWhiteSpace(element.Name))
                 {
                     var walker = TreeWalker.ControlViewWalker;
@@ -534,7 +566,7 @@ internal static class Program
 
     internal static void OnClipboard()
     {
-        if (Session.Paused || Session.Stopping) return;
+        if (!Session.ClipboardEnabled || Session.Paused || Session.Stopping) return;
         try
         {
             if (!Clipboard.ContainsText()) return;
@@ -547,6 +579,23 @@ internal static class Program
             // clipboard can be locked by another process
         }
     }
+
+    private static void WritePrivacyOptions()
+    {
+        var dto = new
+        {
+            screenshots = Session.ScreenshotsEnabled,
+            clipboard = Session.ClipboardEnabled,
+            privacyMode = !Session.ScreenshotsEnabled || !Session.ClipboardEnabled,
+        };
+        File.WriteAllText(Path.Combine(Session.Dir, "privacy.json"), JsonSerializer.Serialize(dto, JsonOpts));
+    }
+
+    private static bool LooksSensitiveLabel(string value) =>
+        System.Text.RegularExpressions.Regex.IsMatch(
+            value,
+            @"\b(password|passwd|passcode|secret|token|authorization|api[-_ ]?key|session.?id|cookie|csrf|otp|ssn|credit.?card|cvv|private.?key)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static void EmitClipboard(string text)
     {

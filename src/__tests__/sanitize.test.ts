@@ -1,4 +1,5 @@
-import { redactText, sanitizeEvent, assertNoSecrets } from "../sanitize.ts";
+import { redactText, sanitizeEvent, assertNoSecrets, isSensitiveName } from "../sanitize.ts";
+import { compressEvents } from "../analysis/compress.ts";
 import type { LearnEvent } from "../types.ts";
 
 function assert(cond: unknown, message: string): void {
@@ -44,5 +45,22 @@ try {
   threw = true;
 }
 assert(threw, "assertNoSecrets must catch GitHub PATs");
+
+assert(!isSensitiveName("Passenger"), "passenger is not a secret field");
+assert(isSensitiveName("Password"), "password field is sensitive");
+assert(isSensitiveName("API key"), "api key field is sensitive");
+
+const redactedType: LearnEvent = {
+  timestamp: "t0",
+  type: "text",
+  text: "[REDACTED]",
+  redacted: true,
+  element: { name: "Password", isPassword: true },
+};
+const redactedSteps = compressEvents([
+  { timestamp: "t0", type: "app-change", application: "Chrome", processName: "chrome", windowTitle: "Login" },
+  redactedType,
+]);
+assert(!redactedSteps.some((s) => s.kind === "type"), "redacted typing must not become a type step");
 
 console.log("sanitize.test.ts ok");

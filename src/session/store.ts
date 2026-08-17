@@ -3,7 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { RECORDINGS_DIR } from "../paths.ts";
 import { sanitizeSession } from "../sanitize.ts";
-import type { Demonstration, LearnEvent, LearnSession, ScreenshotRef } from "../types.ts";
+import type {
+  Demonstration,
+  LearnEvent,
+  LearnSession,
+  PlatformId,
+  RecordingOptions,
+  ScreenshotRef,
+} from "../types.ts";
 
 export function newSessionId(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -59,16 +66,38 @@ export async function listScreenshots(dir: string): Promise<ScreenshotRef[]> {
     }));
 }
 
+export async function readPrivacyOptions(dir: string): Promise<RecordingOptions | undefined> {
+  try {
+    const raw = await fs.readFile(path.join(dir, "privacy.json"), "utf8");
+    const parsed = JSON.parse(raw) as Partial<RecordingOptions>;
+    return {
+      screenshots: parsed.screenshots !== false,
+      clipboard: Boolean(parsed.clipboard),
+      privacyMode: Boolean(parsed.privacyMode),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function nextDemonstrationId(existing: Demonstration[]): string {
+  return `d${existing.length + 1}`;
+}
+
 export function buildSession(params: {
   sessionId: string;
   startedAt: string;
   endedAt: string;
   events: LearnEvent[];
   screenshots: ScreenshotRef[];
+  demonstrationId?: string;
+  platform?: PlatformId;
+  recordedWith?: { name: string; version: string };
+  recordingOptions?: RecordingOptions;
 }): LearnSession {
   const applications = uniqueApplications(params.events);
   const demonstration: Demonstration = {
-    id: "d1",
+    id: params.demonstrationId ?? "d1",
     startedAt: params.startedAt,
     endedAt: params.endedAt,
     events: params.events,
@@ -79,8 +108,19 @@ export function buildSession(params: {
     sessionId: params.sessionId,
     startedAt: params.startedAt,
     endedAt: params.endedAt,
+    platform: params.platform,
+    recordedWith: params.recordedWith,
+    recordingOptions: params.recordingOptions,
     demonstrations: [demonstration],
     narration: [],
+  };
+}
+
+export function appendDemonstration(session: LearnSession, demo: Demonstration): LearnSession {
+  return {
+    ...session,
+    endedAt: demo.endedAt ?? session.endedAt,
+    demonstrations: [...session.demonstrations, demo],
   };
 }
 
