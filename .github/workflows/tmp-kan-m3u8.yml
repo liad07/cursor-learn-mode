@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tmp-kan-m3u8-1073670
+  pull_request:
+    branches:
+      - main
 
 jobs:
   lookup:
