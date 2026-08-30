@@ -10,6 +10,8 @@ const RESOURCE_URI = "ui://learn-mode/app.html";
 const MIME = "text/html;profile=mcp-app";
 const UI_DIR = path.dirname(fileURLToPath(import.meta.url));
 
+const emptyInputSchema = z.object({});
+
 const stepSchema = z.object({
   id: z.string().optional(),
   intent: z.string().min(1),
@@ -71,7 +73,13 @@ export function createServer(): McpServer {
       title: "Learn Workflow",
       description:
         "Open Cursor Learn Mode in chat. Use when the user says /learn, תלמד מה שאני עושה עכשיו, or wants to teach Cursor a process by demonstration.",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async () => {
@@ -92,8 +100,14 @@ export function createServer(): McpServer {
     {
       title: "Start Learning",
       description: "Start a Learn Mode recording session and show the on-screen overlay. The user then demonstrates the workflow.",
-      inputSchema: {
+      inputSchema: z.object({
         name: z.string().optional().describe("Optional kebab-case skill name hint"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
       },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
@@ -116,7 +130,13 @@ export function createServer(): McpServer {
       title: "Teach Another Example",
       description:
         "After reviewing a stopped session, record another demonstration without overwriting previous ones. Re-analyzes all demos on the next learn_stop.",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async () => {
@@ -137,7 +157,13 @@ export function createServer(): McpServer {
     {
       title: "Learn Status",
       description: "Get the current Learn Mode session status (time, event count, preview if available).",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async () => {
@@ -154,7 +180,13 @@ export function createServer(): McpServer {
     {
       title: "Pause Learning",
       description: "Pause or resume the current Learn Mode recording.",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async () => {
@@ -171,7 +203,13 @@ export function createServer(): McpServer {
     {
       title: "Stop Learning",
       description: "Stop recording, sanitize and save the demonstration, then return a semantic workflow preview.",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
     async () => {
@@ -203,11 +241,17 @@ export function createServer(): McpServer {
     {
       title: "Save Skill",
       description: "Save the analyzed demonstration as a standard Cursor Skill (SKILL.md + workflow.json) under ~/.cursor/skills.",
-      inputSchema: {
+      inputSchema: z.object({
         name: z.string().optional().describe("Skill folder name (kebab-case)"),
         title: z.string().optional().describe("Human title"),
         inputs: z.array(z.string()).optional().describe("Input keys to keep after user review"),
         steps: z.array(stepSchema).optional().describe("Reviewed/edited semantic steps"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
       },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
     },
@@ -231,7 +275,13 @@ export function createServer(): McpServer {
     {
       title: "List Learned Skills",
       description: "List Skills previously saved by Learn Mode under ~/.cursor/skills.",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
     },
     async () => {
       try {
@@ -247,7 +297,13 @@ export function createServer(): McpServer {
     {
       title: "Discard Learn Session",
       description: "Stop and discard the current Learn Mode session without saving a Skill.",
-      inputSchema: {},
+      inputSchema: emptyInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
     },
     async () => {
       try {
